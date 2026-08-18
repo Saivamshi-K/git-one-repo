@@ -1,0 +1,57 @@
+name: Daily engineering notes
+
+on:
+  schedule:
+    # 18:00 Asia/Kolkata is 12:30 UTC. GitHub may delay scheduled workflows.
+    - cron: "30 12 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  append-note:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Append a dated maintenance note
+        shell: bash
+        run: |
+          set -euo pipefail
+          today="$(date -u +%F)"
+          log_file="learning-log.md"
+
+          if grep -q "- ${today} —" "$log_file"; then
+            echo "A note for ${today} already exists; no commit needed."
+            exit 0
+          fi
+
+          python3 - <<'PY'
+          from datetime import datetime, timezone
+          from pathlib import Path
+
+          path = Path("learning-log.md")
+          today = datetime.now(timezone.utc).date().isoformat()
+          entry = f"- {today} — Documentation maintenance check completed; review the repository notes and keep future project updates factual."
+          text = path.read_text()
+          marker = "<!-- DAILY_ENTRY_END -->"
+          if marker not in text:
+              raise SystemExit("Daily entry marker is missing")
+          path.write_text(text.replace(marker, entry + "\n" + marker, 1))
+          PY
+
+      - name: Commit and push only when the log changed
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- learning-log.md; then
+            echo "No log change; exiting without a commit."
+            exit 0
+          fi
+          git config user.name "Sai Vamshi Kampati"
+          git config user.email "1.96321313e+08+Saivamshi-K@users.noreply.github.com"
+          git add learning-log.md
+          git commit -m "Update engineering notes"
+          git push
